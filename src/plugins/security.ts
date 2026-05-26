@@ -18,12 +18,12 @@ export const securityPlugin = fp(async (app) => {
 
   await app.register(cors, {
     origin(origin, callback) {
-      if (!origin && !isProduction) {
+      if (!origin) {
         callback(null, true);
         return;
       }
 
-      if (origin && env.CORS_ORIGINS.includes(origin)) {
+      if (env.CORS_ORIGINS.includes(origin)) {
         callback(null, true);
         return;
       }
