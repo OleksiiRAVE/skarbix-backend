@@ -17,10 +17,15 @@ create table if not exists public.accounts (
   type text not null check (type in ('cash', 'bank', 'card', 'savings', 'investment', 'other')),
   currency text not null default 'UAH',
   balance numeric(14,2) not null default 0,
+  color text,
+  icon text,
   is_archived boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.accounts add column if not exists color text;
+alter table public.accounts add column if not exists icon text;
 
 create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
