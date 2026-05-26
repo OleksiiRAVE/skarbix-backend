@@ -1,20 +1,57 @@
 # Skarbix Backend
 
-Backend is not initialized yet.
+Fastify + TypeScript backend for security-sensitive Skarbix workflows.
 
-Target direction:
+## What Lives Here
 
-- TypeScript backend.
-- Supabase Auth and Supabase Postgres.
-- Monobank integration through backend-only API calls.
-- OpenAI integration through backend-only API calls.
-- Audit logs for all financial and security-sensitive actions.
-- API contract for frontend via OpenAPI.
+- Supabase Auth JWT verification.
+- Backend-only Supabase service role usage.
+- Monobank integration, later.
+- OpenAI integration, later.
+- Audit logs for financial and security-sensitive actions.
+- OpenAPI contract.
 
-Recommended first backend decisions:
+## Scripts
 
-1. Choose framework: NestJS or Fastify.
-2. Create staging and production Supabase projects.
-3. Define OpenAPI contract before wiring frontend to real data.
-4. Add audit log model before money-changing features.
-5. Add rate limits for auth, AI, Monobank sync and exports.
+```bash
+npm run dev
+npm run lint
+npm run build
+npm run start
+```
+
+## Required Env
+
+Copy `.env.example` to `.env` locally and fill backend-only values:
+
+```text
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+CORS_ORIGINS
+```
+
+Never expose `SUPABASE_SERVICE_ROLE_KEY` to the frontend.
+
+## Endpoints
+
+```text
+GET /health
+GET /ready
+GET /v1/me
+```
+
+`/v1/me` requires:
+
+```text
+Authorization: Bearer <supabase-user-jwt>
+```
+
+## Database
+
+Initial SQL lives in:
+
+```text
+migrations/001_initial_finance_schema.sql
+```
+
+It creates the first finance tables and enables RLS.
