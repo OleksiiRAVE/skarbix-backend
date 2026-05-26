@@ -99,6 +99,16 @@ alter table public.budgets enable row level security;
 alter table public.debts enable row level security;
 alter table public.audit_logs enable row level security;
 
+drop policy if exists "profiles_select_own" on public.profiles;
+drop policy if exists "profiles_update_own" on public.profiles;
+drop policy if exists "accounts_owner_all" on public.accounts;
+drop policy if exists "categories_owner_select" on public.categories;
+drop policy if exists "categories_owner_write" on public.categories;
+drop policy if exists "transactions_owner_all" on public.transactions;
+drop policy if exists "budgets_owner_all" on public.budgets;
+drop policy if exists "debts_owner_all" on public.debts;
+drop policy if exists "audit_logs_select_own" on public.audit_logs;
+
 create policy "profiles_select_own" on public.profiles for select using (auth.uid() = id);
 create policy "profiles_update_own" on public.profiles for update using (auth.uid() = id) with check (auth.uid() = id);
 
@@ -117,3 +127,31 @@ create index if not exists transactions_user_id_occurred_at_idx on public.transa
 create index if not exists budgets_user_id_idx on public.budgets(user_id);
 create index if not exists debts_user_id_idx on public.debts(user_id);
 create index if not exists audit_logs_user_id_created_at_idx on public.audit_logs(user_id, created_at desc);
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, display_name)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'display_name', new.raw_user_meta_data->>'name')
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        display_name = coalesce(public.profiles.display_name, excluded.display_name),
+        updated_at = now();
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_user();
