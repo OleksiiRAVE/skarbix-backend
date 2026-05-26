@@ -27,6 +27,15 @@ create table if not exists public.accounts (
 alter table public.accounts add column if not exists color text;
 alter table public.accounts add column if not exists icon text;
 
+do $$
+begin
+  alter table public.accounts drop constraint if exists accounts_type_check;
+  alter table public.accounts
+    add constraint accounts_type_check
+    check (type in ('cash', 'bank', 'card', 'checking', 'savings', 'investment', 'other'));
+end;
+$$;
+
 create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete cascade,
