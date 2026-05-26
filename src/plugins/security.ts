@@ -28,7 +28,7 @@ export const securityPlugin = fp(async (app) => {
         return;
       }
 
-      callback(new Error('Origin is not allowed'), false);
+      callback(null, false);
     },
     credentials: false,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
