@@ -9,6 +9,7 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().min(1).default('http://localhost:5173'),
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
+  MONOBANK_TOKEN_ENCRYPTION_KEY: z.string().min(32).optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

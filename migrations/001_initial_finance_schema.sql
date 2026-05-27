@@ -26,6 +26,9 @@ create table if not exists public.accounts (
 
 alter table public.accounts add column if not exists color text;
 alter table public.accounts add column if not exists icon text;
+alter table public.accounts add column if not exists external_source text;
+alter table public.accounts add column if not exists external_id text;
+alter table public.accounts add column if not exists masked_pan text;
 
 do $$
 begin
@@ -98,6 +101,20 @@ create table if not exists public.transactions (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.monobank_connections (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  token_ciphertext text not null,
+  token_iv text not null,
+  token_auth_tag text not null,
+  client_id text,
+  client_name text,
+  webhook_enabled boolean not null default false,
+  imported_transactions integer not null default 0,
+  last_sync_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.budgets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -143,6 +160,7 @@ alter table public.accounts enable row level security;
 alter table public.categories enable row level security;
 alter table public.category_templates enable row level security;
 alter table public.transactions enable row level security;
+alter table public.monobank_connections enable row level security;
 alter table public.budgets enable row level security;
 alter table public.debts enable row level security;
 alter table public.subscriptions enable row level security;
@@ -155,6 +173,7 @@ drop policy if exists "categories_owner_select" on public.categories;
 drop policy if exists "categories_owner_write" on public.categories;
 drop policy if exists "category_templates_select" on public.category_templates;
 drop policy if exists "transactions_owner_all" on public.transactions;
+drop policy if exists "monobank_connections_owner_all" on public.monobank_connections;
 drop policy if exists "budgets_owner_all" on public.budgets;
 drop policy if exists "debts_owner_all" on public.debts;
 drop policy if exists "subscriptions_owner_all" on public.subscriptions;
@@ -175,9 +194,11 @@ create policy "subscriptions_owner_all" on public.subscriptions for all using (a
 create policy "audit_logs_select_own" on public.audit_logs for select using (auth.uid() = user_id);
 
 create index if not exists accounts_user_id_idx on public.accounts(user_id);
+create unique index if not exists accounts_user_external_idx on public.accounts(user_id, external_source, external_id);
 create index if not exists categories_user_id_idx on public.categories(user_id);
 create index if not exists subscriptions_user_id_next_payment_idx on public.subscriptions(user_id, next_payment_on);
 create index if not exists transactions_user_id_occurred_at_idx on public.transactions(user_id, occurred_at desc);
+create unique index if not exists transactions_user_source_external_idx on public.transactions(user_id, source, external_id);
 create index if not exists budgets_user_id_idx on public.budgets(user_id);
 create index if not exists debts_user_id_idx on public.debts(user_id);
 create index if not exists audit_logs_user_id_created_at_idx on public.audit_logs(user_id, created_at desc);
