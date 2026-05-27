@@ -1,5 +1,11 @@
 const MONOBANK_API_URL = 'https://api.monobank.ua';
 
+export class MonobankApiError extends Error {
+  constructor(public readonly statusCode: number) {
+    super(`Monobank request failed with ${statusCode}`);
+  }
+}
+
 export type MonobankAccount = {
   id: string;
   sendId?: string;
@@ -48,7 +54,7 @@ const requestMonobank = async <T>(path: string, token: string): Promise<T> => {
   });
 
   if (!response.ok) {
-    throw new Error(`Monobank request failed with ${response.status}`);
+    throw new MonobankApiError(response.status);
   }
 
   return response.json() as Promise<T>;

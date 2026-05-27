@@ -6,6 +6,7 @@ import {
   getMonobankClientInfo,
   getMonobankStatement,
   kopecksToMajor,
+  MonobankApiError,
   type MonobankAccount,
   type MonobankClientInfo,
 } from '../lib/monobank-client.js';
@@ -31,6 +32,7 @@ type ImportedAccount = {
 
 const MONOBANK_SOURCE = 'monobank';
 const MAX_INITIAL_SYNC_DAYS = 30;
+const isMonoRateLimit = (error: unknown) => error instanceof MonobankApiError && error.statusCode === 429;
 
 const monoAccountName = (account: MonobankAccount) => {
   const maskedPan = account.maskedPan?.[0];
@@ -85,12 +87,22 @@ const syncTransactions = async (
     lastSyncAt ? Math.floor(new Date(lastSyncAt).getTime() / 1000) - 60 * 60 : earliest,
   );
   let imported = 0;
+  let limited = false;
 
   for (const account of clientInfo.accounts) {
     const dbAccount = accounts.find((item) => item.external_id === account.id);
     if (!dbAccount) continue;
 
-    const statement = await getMonobankStatement(token, account.id, from, now);
+    let statement;
+    try {
+      statement = await getMonobankStatement(token, account.id, from, now);
+    } catch (error) {
+      if (isMonoRateLimit(error)) {
+        limited = true;
+        break;
+      }
+      throw error;
+    }
     if (!statement.length) continue;
 
     const rows = statement.map((item) => {
@@ -122,7 +134,7 @@ const syncTransactions = async (
     imported += data?.length ?? 0;
   }
 
-  return imported;
+  return { imported, limited };
 };
 
 export const monobankRoutes: FastifyPluginAsync = async (app) => {
@@ -167,7 +179,15 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
 
     const encrypted = encryptSecret(parsed.data.token);
     const accounts = await upsertAccounts(app, request.user.id, clientInfo);
-    const imported = await syncTransactions(app, request.user.id, parsed.data.token, clientInfo, accounts);
+    let syncResult = { imported: 0, limited: false };
+    let syncLimited = false;
+    try {
+      syncResult = await syncTransactions(app, request.user.id, parsed.data.token, clientInfo, accounts);
+      syncLimited = syncResult.limited;
+    } catch (error) {
+      if (!isMonoRateLimit(error)) throw error;
+      syncLimited = true;
+    }
 
     const { error } = await app.supabase
       .from('monobank_connections')
@@ -180,7 +200,7 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
         client_name: clientInfo.name ?? 'Monobank',
         webhook_enabled: Boolean(clientInfo.webHookUrl),
         last_sync_at: new Date().toISOString(),
-        imported_transactions: imported,
+        imported_transactions: syncResult.imported,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
 
@@ -190,8 +210,9 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
       connected: true,
       accountName: clientInfo.name ?? 'Monobank',
       webhookEnabled: Boolean(clientInfo.webHookUrl),
-      importedTransactions: imported,
+      importedTransactions: syncResult.imported,
       accountsImported: accounts.length,
+      syncLimited,
     };
   });
 
@@ -216,8 +237,16 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
     });
     const clientInfo = await getMonobankClientInfo(token);
     const accounts = await upsertAccounts(app, request.user.id, clientInfo);
-    const imported = await syncTransactions(app, request.user.id, token, clientInfo, accounts, data.last_sync_at);
-    const totalImported = (data.imported_transactions ?? 0) + imported;
+    let syncResult = { imported: 0, limited: false };
+    let syncLimited = false;
+    try {
+      syncResult = await syncTransactions(app, request.user.id, token, clientInfo, accounts, data.last_sync_at);
+      syncLimited = syncResult.limited;
+    } catch (error) {
+      if (!isMonoRateLimit(error)) throw error;
+      syncLimited = true;
+    }
+    const totalImported = (data.imported_transactions ?? 0) + syncResult.imported;
 
     const { error: updateError } = await app.supabase
       .from('monobank_connections')
@@ -233,9 +262,10 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
     if (updateError) throw updateError;
 
     return {
-      imported,
+      imported: syncResult.imported,
       importedTransactions: totalImported,
       accountsImported: accounts.length,
+      syncLimited,
     };
   });
 
