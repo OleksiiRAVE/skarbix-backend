@@ -211,13 +211,21 @@ begin
   insert into public.categories (user_id, name, type, color, icon, is_system, is_protected, template_key)
   values
     (target_user_id, 'Subscriptions', 'expense', '#8B5CF6', 'lucide:repeat', true, true, 'subscriptions'),
-    (target_user_id, 'Debts', 'expense', '#F97316', 'lucide:hand-coins', true, true, 'debts')
+    (target_user_id, 'Debts', 'expense', '#F97316', 'lucide:hand-coins', true, true, 'debts_expense'),
+    (target_user_id, 'Debts', 'income', '#10B981', 'lucide:hand-coins', true, true, 'debts_income')
   on conflict (user_id, name, type) do update
     set is_system = true,
         is_protected = true,
         template_key = excluded.template_key,
         color = coalesce(public.categories.color, excluded.color),
         icon = coalesce(public.categories.icon, excluded.icon);
+
+  update public.categories
+  set template_key = 'debts_expense'
+  where user_id = target_user_id
+    and name = 'Debts'
+    and type = 'expense'
+    and template_key = 'debts';
 end;
 $$;
 
