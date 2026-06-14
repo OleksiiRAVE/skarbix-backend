@@ -28,6 +28,12 @@ const assistantResponseSchema = z.object({
   parsedTransaction: parsedTransactionSchema.nullish(),
 });
 
+const isExpectedLanguage = (message: string, locale: 'uk' | 'en') => (
+  locale === 'en'
+    ? !/[А-Яа-яЁёІіЇїЄєҐґ]/u.test(message)
+    : /[ІіЇїЄєҐґ]/u.test(message)
+);
+
 const selectOrThrow = async <T>(
   query: PromiseLike<{ data: T | null; error: { message: string } | null }>,
 ) => {
@@ -136,6 +142,10 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
       { role: 'system', content: systemPrompt(context, parsedBody.data.locale) },
       ...parsedBody.data.history,
       { role: 'user', content: parsedBody.data.message },
+      {
+        role: 'system',
+        content: `Mandatory output language: ${parsedBody.data.locale === 'uk' ? 'Ukrainian' : 'English'}. Do not mirror the user's language.`,
+      },
     ];
 
     let assistantResponse: z.infer<typeof assistantResponseSchema> | null = null;
@@ -146,13 +156,18 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
             ...messages,
             {
               role: 'system' as const,
-              content: 'Your previous response was invalid. Return only valid JSON matching the required shape.',
+              content: `Your previous response had an invalid format or language. Return valid JSON in ${parsedBody.data.locale === 'uk' ? 'Ukrainian' : 'English'} only.`,
             },
           ];
       const rawResponse = await createDeepSeekCompletion(attemptMessages);
       try {
         const parsedResponse = assistantResponseSchema.safeParse(JSON.parse(rawResponse));
-        if (parsedResponse.success) assistantResponse = parsedResponse.data;
+        if (
+          parsedResponse.success
+          && isExpectedLanguage(parsedResponse.data.message, parsedBody.data.locale)
+        ) {
+          assistantResponse = parsedResponse.data;
+        }
       } catch {
         // Retry once with an explicit JSON correction instruction.
       }
