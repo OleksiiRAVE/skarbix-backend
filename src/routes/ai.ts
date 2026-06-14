@@ -138,16 +138,27 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
       { role: 'user', content: parsedBody.data.message },
     ];
 
-    const rawResponse = await createDeepSeekCompletion(messages);
-    let json: unknown;
-    try {
-      json = JSON.parse(rawResponse);
-    } catch {
-      throw app.httpErrors.badGateway('AI returned an invalid response');
+    let assistantResponse: z.infer<typeof assistantResponseSchema> | null = null;
+    for (let attempt = 0; attempt < 2 && !assistantResponse; attempt += 1) {
+      const attemptMessages = attempt === 0
+        ? messages
+        : [
+            ...messages,
+            {
+              role: 'system' as const,
+              content: 'Your previous response was invalid. Return only valid JSON matching the required shape.',
+            },
+          ];
+      const rawResponse = await createDeepSeekCompletion(attemptMessages);
+      try {
+        const parsedResponse = assistantResponseSchema.safeParse(JSON.parse(rawResponse));
+        if (parsedResponse.success) assistantResponse = parsedResponse.data;
+      } catch {
+        // Retry once with an explicit JSON correction instruction.
+      }
     }
 
-    const assistantResponse = assistantResponseSchema.safeParse(json);
-    if (!assistantResponse.success) {
+    if (!assistantResponse) {
       throw app.httpErrors.badGateway('AI returned an invalid response');
     }
 
@@ -157,7 +168,7 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
       entity_type: 'ai_assistant',
       metadata: {
         model: env.DEEPSEEK_MODEL,
-        proposed_transaction: Boolean(assistantResponse.data.parsedTransaction),
+        proposed_transaction: Boolean(assistantResponse.parsedTransaction),
       },
     });
     if (auditError) request.log.warn({ error: auditError }, 'Could not write AI audit event');
@@ -165,9 +176,9 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
     return {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: assistantResponse.data.message,
+      content: assistantResponse.message,
       timestamp: new Date().toISOString(),
-      parsedTransaction: assistantResponse.data.parsedTransaction ?? undefined,
+      parsedTransaction: assistantResponse.parsedTransaction ?? undefined,
     };
   });
 };
