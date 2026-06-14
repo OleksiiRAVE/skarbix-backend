@@ -6,7 +6,8 @@ Fastify + TypeScript backend for security-sensitive Skarbix workflows.
 
 - Supabase Auth JWT verification.
 - Backend-only Supabase service role usage.
-- Monobank integration, later.
+- Monobank provider authorization, QR consent, statement import and webhook
+  synchronization.
 - OpenAI integration, later.
 - Audit logs for financial and security-sensitive actions.
 - OpenAPI contract.
@@ -38,6 +39,11 @@ Never expose `SUPABASE_SERVICE_ROLE_KEY` to the frontend.
 GET /health
 GET /ready
 GET /v1/me
+GET /v1/monobank/status
+POST /v1/monobank/provider/authorize
+POST /v1/monobank/provider/confirm
+POST /v1/monobank/sync
+DELETE /v1/monobank/disconnect
 ```
 
 `/v1/me` requires:
@@ -48,10 +54,11 @@ Authorization: Bearer <supabase-user-jwt>
 
 ## Database
 
-Initial SQL lives in:
+Database migrations live in:
 
 ```text
 migrations/001_initial_finance_schema.sql
+migrations/002_monobank_provider.sql
 ```
 
 It creates the first finance tables and enables RLS.
