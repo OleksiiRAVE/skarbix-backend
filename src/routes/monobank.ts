@@ -253,7 +253,7 @@ const completeProviderConnection = async (
 
   let webhookEnabled = false;
   try {
-    await setProviderMonobankWebhook(requestId);
+    await setProviderMonobankWebhook();
     webhookEnabled = true;
   } catch (error) {
     app.log.warn({ error, userId }, 'Could not configure Monobank provider webhook');

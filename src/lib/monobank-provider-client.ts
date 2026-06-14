@@ -97,10 +97,9 @@ export const getProviderMonobankStatement = (
   { requestId },
 );
 
-export const setProviderMonobankWebhook = (requestId: string) =>
+export const setProviderMonobankWebhook = () =>
   providerRequest<Record<string, never>>('/personal/corp/webhook', {
     method: 'POST',
-    requestId,
     body: {
       webHookUrl: providerConfig().webhookUrl,
     },
