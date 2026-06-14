@@ -10,6 +10,11 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
   MONOBANK_TOKEN_ENCRYPTION_KEY: z.string().min(32).optional(),
+  MONOBANK_PROVIDER_KEY_ID: z.string().min(20).optional(),
+  MONOBANK_PROVIDER_PRIVATE_KEY_BASE64: z.string().min(100).optional(),
+  MONOBANK_PROVIDER_CALLBACK_URL: z.string().url().optional(),
+  MONOBANK_PROVIDER_WEBHOOK_URL: z.string().url().optional(),
+  MONOBANK_PROVIDER_WEBHOOK_SECRET: z.string().min(32).optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -28,3 +33,11 @@ export const env = {
 };
 
 export const isProduction = env.NODE_ENV === 'production';
+
+export const hasMonobankProviderConfig = Boolean(
+  env.MONOBANK_PROVIDER_KEY_ID &&
+  env.MONOBANK_PROVIDER_PRIVATE_KEY_BASE64 &&
+  env.MONOBANK_PROVIDER_CALLBACK_URL &&
+  env.MONOBANK_PROVIDER_WEBHOOK_URL &&
+  env.MONOBANK_PROVIDER_WEBHOOK_SECRET
+);

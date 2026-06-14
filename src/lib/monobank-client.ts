@@ -1,7 +1,10 @@
 const MONOBANK_API_URL = 'https://api.monobank.ua';
 
 export class MonobankApiError extends Error {
-  constructor(public readonly statusCode: number) {
+  constructor(
+    public readonly statusCode: number,
+    public readonly responseBody?: string,
+  ) {
     super(`Monobank request failed with ${statusCode}`);
   }
 }
