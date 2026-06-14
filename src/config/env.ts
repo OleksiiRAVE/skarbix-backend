@@ -15,6 +15,9 @@ const envSchema = z.object({
   MONOBANK_PROVIDER_CALLBACK_URL: z.string().url().optional(),
   MONOBANK_PROVIDER_WEBHOOK_URL: z.string().url().optional(),
   MONOBANK_PROVIDER_WEBHOOK_SECRET: z.string().min(32).optional(),
+  DEEPSEEK_API_KEY: z.string().min(20).optional(),
+  DEEPSEEK_BASE_URL: z.string().url().default('https://api.deepseek.com'),
+  DEEPSEEK_MODEL: z.string().min(1).default('deepseek-v4-flash'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -41,3 +44,5 @@ export const hasMonobankProviderConfig = Boolean(
   env.MONOBANK_PROVIDER_WEBHOOK_URL &&
   env.MONOBANK_PROVIDER_WEBHOOK_SECRET
 );
+
+export const hasDeepSeekConfig = Boolean(env.DEEPSEEK_API_KEY);

@@ -7,6 +7,7 @@ import { supabasePlugin } from './plugins/supabase.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
 import { monobankRoutes } from './routes/monobank.js';
+import { aiRoutes } from './routes/ai.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -37,6 +38,7 @@ export async function buildApp() {
   await app.register(healthRoutes);
   await app.register(meRoutes, { prefix: '/v1' });
   await app.register(monobankRoutes, { prefix: '/v1' });
+  await app.register(aiRoutes, { prefix: '/v1' });
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     request.log.error(error);
