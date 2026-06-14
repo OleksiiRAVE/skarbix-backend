@@ -436,34 +436,47 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.notFound();
     }
 
-    const requestId = request.headers['x-request-id'];
-    if (typeof requestId !== 'string') {
+    const parsed = webhookSchema.safeParse(request.body);
+    if (!parsed.success) {
       // Monobank checks a new webhook with an empty POST before saving it.
       return reply.status(200).send({ received: true });
     }
 
-    const { data: connection, error: connectionError } = await app.supabase
+    const requestId = request.headers['x-request-id'];
+    const { data: linkedAccount, error: accountLookupError } = await app.supabase
+      .from('accounts')
+      .select('id,user_id')
+      .eq('external_source', MONOBANK_SOURCE)
+      .eq('external_id', parsed.data.data.account)
+      .maybeSingle<{ id: string; user_id: string }>();
+
+    if (accountLookupError) throw accountLookupError;
+    if (!linkedAccount) throw app.httpErrors.unauthorized('Unknown Monobank account');
+
+    let connectionQuery = app.supabase
       .from('monobank_connections')
-      .select('user_id,imported_transactions')
-      .eq('token_request_id', requestId)
+      .select('user_id,token_request_id,imported_transactions')
+      .eq('user_id', linkedAccount.user_id)
       .eq('auth_mode', 'provider')
-      .eq('status', 'connected')
-      .maybeSingle<{ user_id: string; imported_transactions: number | null }>();
+      .eq('status', 'connected');
+    if (typeof requestId === 'string') {
+      connectionQuery = connectionQuery.eq('token_request_id', requestId);
+    }
+    const { data: connection, error: connectionError } = await connectionQuery
+      .maybeSingle<{
+        user_id: string;
+        token_request_id: string;
+        imported_transactions: number | null;
+      }>();
 
     if (connectionError) throw connectionError;
-    if (!connection) throw app.httpErrors.unauthorized('Unknown Monobank request id');
-
-    const parsed = webhookSchema.safeParse(request.body);
-    if (!parsed.success) {
-      app.log.info({ requestId }, 'Ignored unsupported Monobank webhook payload');
-      return reply.status(202).send({ received: true });
-    }
+    if (!connection) throw app.httpErrors.unauthorized('Unknown Monobank connection');
 
     const payloadHash = createHash('sha256')
       .update(JSON.stringify(parsed.data))
       .digest('hex');
     const { error: eventError } = await app.supabase.from('monobank_webhook_events').insert({
-      token_request_id: requestId,
+      token_request_id: connection.token_request_id,
       external_id: parsed.data.data.statementItem.id,
       event_type: parsed.data.type,
       payload_hash: payloadHash,
@@ -475,34 +488,10 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
     if (eventError) throw eventError;
 
     try {
-      const { data: existingAccount, error: accountError } = await app.supabase
-        .from('accounts')
-        .select('id')
-        .eq('user_id', connection.user_id)
-        .eq('external_source', MONOBANK_SOURCE)
-        .eq('external_id', parsed.data.data.account)
-        .maybeSingle<{ id: string }>();
-
-      if (accountError) throw accountError;
-      let account = existingAccount;
-      if (!account) {
-        const clientInfo = await getProviderMonobankClientInfo(requestId);
-        await upsertAccounts(app, connection.user_id, clientInfo);
-        const result = await app.supabase
-          .from('accounts')
-          .select('id')
-          .eq('user_id', connection.user_id)
-          .eq('external_source', MONOBANK_SOURCE)
-          .eq('external_id', parsed.data.data.account)
-          .single<{ id: string }>();
-        if (result.error) throw result.error;
-        account = result.data;
-      }
-
       const item = parsed.data.data.statementItem;
       const { error: transactionError } = await app.supabase
         .from('transactions')
-        .upsert(transactionRow(connection.user_id, account.id, item), {
+        .upsert(transactionRow(connection.user_id, linkedAccount.id, item), {
           onConflict: 'user_id,source,external_id',
         });
       if (transactionError) throw transactionError;
@@ -514,7 +503,7 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
             balance: kopecksToMajor(item.balance),
             updated_at: new Date().toISOString(),
           })
-          .eq('id', account.id)
+          .eq('id', linkedAccount.id)
           .eq('user_id', connection.user_id);
         if (balanceError) throw balanceError;
       }
@@ -534,7 +523,7 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
       await app.supabase
         .from('monobank_webhook_events')
         .update({ processed_at: now })
-        .eq('token_request_id', requestId)
+        .eq('token_request_id', connection.token_request_id)
         .eq('payload_hash', payloadHash);
 
       return reply.status(200).send({ received: true });
@@ -542,7 +531,7 @@ export const monobankRoutes: FastifyPluginAsync = async (app) => {
       await app.supabase
         .from('monobank_webhook_events')
         .update({ error: error instanceof Error ? error.message.slice(0, 500) : 'Unknown error' })
-        .eq('token_request_id', requestId)
+        .eq('token_request_id', connection.token_request_id)
         .eq('payload_hash', payloadHash);
       throw error;
     }
